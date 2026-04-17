@@ -3,42 +3,59 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Status</title>
+    <title>Arbies System Status</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <nav style="margin-bottom: 20px; text-align: right;">
-            <a href="/">Dashboard</a> | 
-            <a href="/feed.html">Live Feed</a> | 
-            <a href="/status.html">Status Check</a> | 
-            <a href="/test.html">API Test</a>
-        </nav>
-        <h1>System Status</h1>
-        
-        <div style="background: #fafafa; padding: 20px; border-radius: 5px; border: 1px solid #eee;">
-            <h2>API Health Node</h2>
-            <div id="status-indicator">Checking...</div>
-        </div>
+    <div class="backdrop-glow"></div>
+    <div class="container page-fade-in">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">Operational Snapshot</p>
+                <h1>System Status</h1>
+            </div>
+            <nav class="nav-links">
+                <a href="/">Dashboard</a>
+                <a href="/feed.html">Live Feed</a>
+                <a class="active" href="/status.html">Status</a>
+                <a href="/test.html">API Lab</a>
+            </nav>
+        </header>
+
+        <section class="split-grid reveal-stagger">
+            <article class="panel">
+                <div class="panel-header">
+                    <h3>Health Endpoint</h3>
+                    <span class="pill"><span id="health-dot" class="pill-dot"></span><span id="health-label">Checking</span></span>
+                </div>
+                <p class="subtle" id="health-detail">Awaiting /api/health response</p>
+                <div class="response-box" id="health-json">Waiting...</div>
+            </article>
+
+            <article class="panel">
+                <div class="panel-header">
+                    <h3>State Summary</h3>
+                    <p id="state-meta">Polling /api/state every 5s</p>
+                </div>
+                <div class="metric-grid" style="margin: 0;">
+                    <article class="metric-card">
+                        <p>Tracked Symbols</p>
+                        <h2 id="tracked-symbols">0</h2>
+                    </article>
+                    <article class="metric-card">
+                        <p>Venue Entries</p>
+                        <h2 id="venue-entries">0</h2>
+                    </article>
+                </div>
+                <div class="response-box" id="state-sample">Waiting...</div>
+            </article>
+        </section>
     </div>
 
-    <script>
-        async function checkStatus() {
-            const ind = document.getElementById('status-indicator');
-            try {
-                const response = await fetch('/api/health');
-                const data = await response.json();
-                if (data.status === "OK") {
-                    ind.innerHTML = `<span style="color: green; font-weight: bold;">ONLINE</span><br>Service: ${data.service}`;
-                } else {
-                    ind.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span>`;
-                }
-            } catch (e) {
-                ind.innerHTML = `<span style="color: red; font-weight: bold;">OFFLINE</span><br>Cannot connect to API`;
-            }
-        }
-        checkStatus();
-        setInterval(checkStatus, 5000);
-    </script>
+    <script src="ui.js"></script>
+    <script type="module" src="/js/pages/status.page.js"></script>
 </body>
 </html>

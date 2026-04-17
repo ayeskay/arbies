@@ -3,38 +3,76 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>Trading Arbies</title>
+    <title>Arbies Pulse Dashboard</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
 </head>
 <body>
-    <div class="container">
-        <nav style="margin-bottom: 20px; text-align: right;">
-            <a href="/">Dashboard</a> | 
-            <a href="/feed.html">Live Feed</a> | 
-            <a href="/status.html">Status Check</a> | 
-            <a href="/test.html">API Test</a>
-        </nav>
-        <h1>Live Arbitrage Opportunities</h1>
-        <div class="table-wrapper">
-            <table id="arb-table">
-                <thead>
-                    <tr>
-                        <th>Time</th>
-                        <th>Symbol</th>
-                        <th>Buy Venue</th>
-                        <th>Ask Price</th>
-                        <th>Sell Venue</th>
-                        <th>Bid Price</th>
-                        <th>Gross Spread</th>
-                        <th>Net Bps</th>
-                    </tr>
-                </thead>
-                <tbody id="arb-body">
-                    <!-- Data injected via JS -->
-                </tbody>
-            </table>
-        </div>
+    <div class="backdrop-glow"></div>
+    <div class="container page-fade-in">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">Realtime Cross-Exchange Scanner</p>
+                <h1>Arbies Pulse</h1>
+            </div>
+            <nav class="nav-links">
+                <a class="active" href="/">Dashboard</a>
+                <a href="/feed.html">Live Feed</a>
+                <a href="/status.html">Status</a>
+                <a href="/test.html">API Lab</a>
+            </nav>
+        </header>
+
+        <section class="metric-grid">
+            <article class="metric-card reveal-stagger">
+                <p>Connection</p>
+                <h2 id="connection-status">Connecting</h2>
+                <span id="connection-subtext" class="subtle">Awaiting first websocket tick</span>
+            </article>
+            <article class="metric-card reveal-stagger">
+                <p>Total Opportunities</p>
+                <h2 id="total-opportunities">0</h2>
+                <span class="subtle">Current browser session</span>
+            </article>
+            <article class="metric-card reveal-stagger">
+                <p>Best Net Bps</p>
+                <h2 id="best-net-bps">0.00</h2>
+                <span id="best-symbol" class="subtle">No symbol yet</span>
+            </article>
+            <article class="metric-card reveal-stagger">
+                <p>Top Symbol</p>
+                <h2 id="top-symbol">-</h2>
+                <span id="top-symbol-count" class="subtle">0 hits</span>
+            </article>
+        </section>
+
+        <section class="panel reveal-stagger">
+            <div class="panel-header">
+                <h3>Live Opportunities</h3>
+                <p>Newest opportunities appear on top. Keeping the latest 80 rows.</p>
+            </div>
+            <div class="table-wrapper">
+                <table>
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Symbol</th>
+                            <th>Buy Venue</th>
+                            <th>Ask</th>
+                            <th>Sell Venue</th>
+                            <th>Bid</th>
+                            <th>Gross Spread</th>
+                            <th>Net Bps</th>
+                        </tr>
+                    </thead>
+                    <tbody id="arb-body"></tbody>
+                </table>
+            </div>
+        </section>
     </div>
-    <script src="app.js"></script>
+    <script src="ui.js"></script>
+    <script type="module" src="/js/pages/dashboard.page.js"></script>
 </body>
 </html>

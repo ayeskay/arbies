@@ -3,103 +3,62 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>API Endpoints Test</title>
+    <title>Arbies API Lab</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com">
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+    <link href="https://fonts.googleapis.com/css2?family=Space+Grotesk:wght@400;500;700&family=Sora:wght@500;700&display=swap" rel="stylesheet">
     <link rel="stylesheet" href="styles.css">
-    <style>
-        .test-box { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; background: #fafafa; }
-        .response-box { background: #eee; padding: 10px; font-family: monospace; white-space: pre-wrap; margin-top: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;}
-        button { padding: 8px 12px; cursor: pointer; border: 1px solid #999; background: #fff; }
-        button:hover { background: #f0f0f0; }
-    </style>
 </head>
 <body>
-    <div class="container">
-        <nav style="margin-bottom: 20px; text-align: right;">
-            <a href="/">Dashboard</a> | 
-            <a href="/feed.html">Live Feed</a> | 
-            <a href="/status.html">Status Check</a> | 
-            <a href="/test.html">API Test</a>
-        </nav>
-        <h1>API Testing Dashboard</h1>
+    <div class="backdrop-glow"></div>
+    <div class="container page-fade-in">
+        <header class="topbar">
+            <div>
+                <p class="eyebrow">Manual Endpoint Validation</p>
+                <h1>API Lab</h1>
+            </div>
+            <nav class="nav-links">
+                <a href="/">Dashboard</a>
+                <a href="/feed.html">Live Feed</a>
+                <a href="/status.html">Status</a>
+                <a class="active" href="/test.html">API Lab</a>
+            </nav>
+        </header>
 
-        <div class="test-box">
-            <h3>1. GET /api/health</h3>
-            <p>Check if the API server is responsive.</p>
-            <button onclick="testHealth()">Call /api/health</button>
-            <div id="res-health" class="response-box">Awaiting execution...</div>
-        </div>
+        <section class="split-grid reveal-stagger">
+            <article class="panel">
+                <div class="panel-header">
+                    <h3>GET /api/health</h3>
+                    <button class="btn-primary" type="button" onclick="testHealth()">Run</button>
+                </div>
+                <p class="subtle">Checks if the backend heartbeat is healthy.</p>
+                <div id="res-health" class="response-box">Awaiting execution...</div>
+            </article>
 
-        <div class="test-box">
-            <h3>2. GET /api/state</h3>
-            <p>Fetch the raw internal multi-exchange orderbook dictionary.</p>
-            <button onclick="testState()">Call /api/state</button>
-            <div id="res-state" class="response-box">Awaiting execution...</div>
-        </div>
+            <article class="panel">
+                <div class="panel-header">
+                    <h3>GET /api/state</h3>
+                    <button class="btn-primary" type="button" onclick="testState()">Run</button>
+                </div>
+                <p class="subtle">Returns in-memory cross-venue state for tracked symbols.</p>
+                <div id="res-state" class="response-box">Awaiting execution...</div>
+            </article>
+        </section>
 
-        <div class="test-box">
-            <h3>3. WS /ws</h3>
-            <p>Connect to the websocket broadcaster to listen for opportunities.</p>
-            <button onclick="testWS()">Connect WebSocket</button>
-            <button onclick="disconnectWS()">Disconnect</button>
+        <section class="panel reveal-stagger">
+            <div class="panel-header">
+                <h3>WS /ws</h3>
+                <div class="raw-controls" style="margin:0;">
+                    <button class="btn-primary" type="button" onclick="testWS()">Connect</button>
+                    <button class="btn-danger" type="button" onclick="disconnectWS()">Disconnect</button>
+                </div>
+            </div>
+            <p class="subtle">Streams realtime opportunity payloads.</p>
             <div id="res-ws" class="response-box">Not connected...</div>
-        </div>
+        </section>
     </div>
 
-    <script>
-        async function testHealth() {
-            const out = document.getElementById('res-health');
-            out.innerText = "Calling...";
-            try {
-                const res = await fetch('/api/health');
-                const data = await res.json();
-                out.innerText = JSON.stringify(data, null, 2);
-            } catch (e) {
-                out.innerText = "Error: " + e.message;
-            }
-        }
-
-        async function testState() {
-            const out = document.getElementById('res-state');
-            out.innerText = "Calling...";
-            try {
-                const res = await fetch('/api/state');
-                const data = await res.json();
-                out.innerText = JSON.stringify(data, null, 2);
-            } catch (e) {
-                out.innerText = "Error: " + e.message;
-            }
-        }
-
-        let testSocket = null;
-        function testWS() {
-            const out = document.getElementById('res-ws');
-            if (testSocket) {
-                out.innerText = "Already connected.\n" + out.innerText;
-                return;
-            }
-            
-            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
-            testSocket = new WebSocket(`${protocol}//${window.location.host}/ws`);
-            
-            out.innerText = "Connecting...\n";
-            
-            testSocket.onopen = () => out.innerText = "Connected!\n" + out.innerText;
-            testSocket.onmessage = (e) => {
-                const payload = JSON.stringify(JSON.parse(e.data), null, 2);
-                out.innerText = `[Message Received]:\n${payload}\n\n` + out.innerText;
-            };
-            testSocket.onclose = () => {
-                out.innerText = "Disconnected.\n" + out.innerText;
-                testSocket = null;
-            };
-            testSocket.onerror = (e) => out.innerText = "Error.\n" + out.innerText;
-        }
-
-        function disconnectWS() {
-            if (testSocket) {
-                testSocket.close();
-            }
-        }
-    </script>
+    <script src="ui.js"></script>
+    <script type="module" src="/js/pages/test.bindings.js"></script>
 </body>
 </html>

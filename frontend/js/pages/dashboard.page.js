@@ -1,5 +1,8 @@
+import { RealtimeChannel } from "../core/ws-client.js";
+import { animateNumber } from "../core/motion.js";
+import { toFixedOrDash, formatTime } from "../core/format.js";
+
 const tbody = document.getElementById("arb-body");
-const wsProtocol = window.location.protocol === "https:" ? "wss:" : "ws:";
 const MAX_ROWS = 80;
 
 const elConnectionStatus = document.getElementById("connection-status");
@@ -10,13 +13,10 @@ const elBestSymbol = document.getElementById("best-symbol");
 const elTopSymbol = document.getElementById("top-symbol");
 const elTopSymbolCount = document.getElementById("top-symbol-count");
 
-let ws = null;
-let reconnectDelayMs = 1000;
-let reconnectTimer = null;
-let flushScheduled = false;
-
+const channel = new RealtimeChannel("/ws");
 const pendingRows = [];
 const symbolHitMap = new Map();
+
 const state = {
     total: 0,
     bestNetBps: Number.NEGATIVE_INFINITY,
@@ -28,6 +28,36 @@ const metricTween = {
     bestNet: 0,
 };
 
+let flushScheduled = false;
+
+channel.onStatus(({ state: status, detail }) => {
+    let kind = "metric-warn";
+    if (status === "live") {
+        kind = "metric-good";
+    }
+    if (status === "error") {
+        kind = "metric-bad";
+    }
+    setConnectionState(capitalize(status), detail, kind);
+});
+
+channel.onMessage((rawPayload) => {
+    try {
+        const data = JSON.parse(rawPayload);
+        pendingRows.push(data);
+        scheduleFlush();
+    } catch {
+        setConnectionState("Warning", "Received malformed payload", "metric-warn");
+    }
+});
+
+function capitalize(value) {
+    if (!value) {
+        return "Unknown";
+    }
+    return value[0].toUpperCase() + value.slice(1);
+}
+
 function setConnectionState(label, detail, kind) {
     elConnectionStatus.textContent = label;
     elConnectionSubtext.textContent = detail;
@@ -35,70 +65,6 @@ function setConnectionState(label, detail, kind) {
     if (kind) {
         elConnectionStatus.classList.add(kind);
     }
-}
-
-function animateNumber(from, to, durationMs, onFrame) {
-    const start = performance.now();
-    const delta = to - from;
-
-    function step(now) {
-        const progress = Math.min((now - start) / durationMs, 1);
-        const eased = 1 - Math.pow(1 - progress, 3);
-        onFrame(from + delta * eased);
-        if (progress < 1) {
-            window.requestAnimationFrame(step);
-        }
-    }
-
-    window.requestAnimationFrame(step);
-}
-
-function connectWebSocket() {
-    setConnectionState("Connecting", "Opening websocket stream", "metric-warn");
-    ws = new WebSocket(`${wsProtocol}//${window.location.host}/ws`);
-
-    ws.onopen = () => {
-        reconnectDelayMs = 1000;
-        setConnectionState("Live", "Receiving market opportunity events", "metric-good");
-    };
-
-    ws.onmessage = (event) => {
-        try {
-            const data = JSON.parse(event.data);
-            pendingRows.push(data);
-            scheduleFlush();
-        } catch (error) {
-            setConnectionState("Warning", "Received malformed payload", "metric-warn");
-            console.error("Error parsing message", error);
-        }
-    };
-
-    ws.onclose = () => {
-        setConnectionState("Reconnecting", "Socket closed, retrying shortly", "metric-warn");
-        scheduleReconnect();
-    };
-
-    ws.onerror = () => {
-        setConnectionState("Disconnected", "Socket error detected", "metric-bad");
-        if (ws && ws.readyState <= WebSocket.OPEN) {
-            ws.close();
-        }
-    };
-}
-
-function scheduleReconnect() {
-    if (reconnectTimer) {
-        return;
-    }
-    reconnectTimer = window.setTimeout(() => {
-        reconnectTimer = null;
-        connectWebSocket();
-    }, reconnectDelayMs);
-    reconnectDelayMs = Math.min(reconnectDelayMs * 2, 10000);
-}
-
-function formatTime(date) {
-    return date.toTimeString().split(" ")[0] + "." + date.getMilliseconds().toString().padStart(3, "0");
 }
 
 function scheduleFlush() {
@@ -176,6 +142,7 @@ function renderMetrics() {
             topCount = count;
         }
     }
+
     elTopSymbol.textContent = topSymbol;
     elTopSymbolCount.textContent = `${topCount} hits`;
 }
@@ -184,7 +151,8 @@ function buildRow(data) {
     const tr = document.createElement("tr");
     tr.classList.add("row-enter");
     window.setTimeout(() => tr.classList.remove("row-enter"), 420);
-    appendCell(tr, formatTime(new Date()));
+
+    appendCell(tr, formatTime(Date.now()));
     appendCell(tr, (data.symbol || "").toUpperCase(), "mono");
     appendCell(tr, data.buy_exchange || "-");
     appendCell(tr, toFixedOrDash(data.buy_ask), "mono");
@@ -192,6 +160,7 @@ function buildRow(data) {
     appendCell(tr, toFixedOrDash(data.sell_bid), "mono");
     appendCell(tr, toFixedOrDash(data.gross_spread), Number(data.gross_spread) >= 0 ? "positive" : "negative");
     appendCell(tr, toFixedOrDash(data.net_spread_bps), Number(data.net_spread_bps) >= 0 ? "positive" : "negative");
+
     return tr;
 }
 
@@ -204,17 +173,5 @@ function appendCell(tr, value, className) {
     tr.appendChild(td);
 }
 
-function toFixedOrDash(value) {
-    return Number.isFinite(value) ? value.toFixed(2) : "-";
-}
-
-window.addEventListener("beforeunload", () => {
-    if (reconnectTimer) {
-        window.clearTimeout(reconnectTimer);
-    }
-    if (ws && ws.readyState <= WebSocket.OPEN) {
-        ws.close();
-    }
-});
-
-connectWebSocket();
+window.addEventListener("beforeunload", () => channel.disconnect());
+channel.connect();
