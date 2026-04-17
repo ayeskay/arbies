@@ -6,6 +6,7 @@ from signals.spread import get_best_opportunity
 from data_ingestion.binance_ws import binance_stream
 from data_ingestion.coinbase_ws import coinbase_stream
 from data_ingestion.okx_ws import okx_stream
+from api.server import start_api_server, broadcast_data
 
 try:
     import uvloop
@@ -21,6 +22,8 @@ async def consumer_loop():
             symbol_state = get_state(data["symbol"])
             opportunity = get_best_opportunity(symbol_state)
             if opportunity:
+                opportunity['symbol'] = data['symbol']
+                await broadcast_data(opportunity)
                 print(
                     "ARB | "
                     f"{data['symbol']} | "
@@ -47,6 +50,8 @@ async def main():
         producers.append(
             coinbase_stream(market_queue, symbol, get_venue_symbol("coinbase", symbol))
         )
+
+    producers.append(start_api_server())
 
     await asyncio.gather(*producers, consumer_loop())
 

@@ -1,0 +1,44 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Status</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <nav style="margin-bottom: 20px; text-align: right;">
+            <a href="/">Dashboard</a> | 
+            <a href="/feed.html">Live Feed</a> | 
+            <a href="/status.html">Status Check</a> | 
+            <a href="/test.html">API Test</a>
+        </nav>
+        <h1>System Status</h1>
+        
+        <div style="background: #fafafa; padding: 20px; border-radius: 5px; border: 1px solid #eee;">
+            <h2>API Health Node</h2>
+            <div id="status-indicator">Checking...</div>
+        </div>
+    </div>
+
+    <script>
+        async function checkStatus() {
+            const ind = document.getElementById('status-indicator');
+            try {
+                const response = await fetch('/api/health');
+                const data = await response.json();
+                if (data.status === "OK") {
+                    ind.innerHTML = `<span style="color: green; font-weight: bold;">ONLINE</span><br>Service: ${data.service}`;
+                } else {
+                    ind.innerHTML = `<span style="color: red; font-weight: bold;">ERROR</span>`;
+                }
+            } catch (e) {
+                ind.innerHTML = `<span style="color: red; font-weight: bold;">OFFLINE</span><br>Cannot connect to API`;
+            }
+        }
+        checkStatus();
+        setInterval(checkStatus, 5000);
+    </script>
+</body>
+</html>

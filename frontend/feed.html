@@ -1,0 +1,92 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Live Feed</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <nav style="margin-bottom: 20px; text-align: right;">
+            <a href="/">Dashboard</a> |
+            <a href="/feed.html">Live Feed</a> |
+            <a href="/status.html">Status Check</a> |
+            <a href="/test.html">API Test</a>
+        </nav>
+        <h1>Queryable Live Feed</h1>
+
+        <section class="panel">
+            <div class="filter-grid">
+                <div>
+                    <label for="symbol-filter">Symbol (substring)</label>
+                    <input id="symbol-filter" type="text" placeholder="btc">
+                </div>
+                <div>
+                    <label for="buy-filter">Buy Venue (substring)</label>
+                    <input id="buy-filter" type="text" placeholder="okx">
+                </div>
+                <div>
+                    <label for="sell-filter">Sell Venue (substring)</label>
+                    <input id="sell-filter" type="text" placeholder="binance">
+                </div>
+                <div>
+                    <label for="min-net-bps">Min Net Bps</label>
+                    <input id="min-net-bps" type="number" step="0.01" min="0" value="0">
+                </div>
+                <div>
+                    <label for="min-gross">Min Gross Spread</label>
+                    <input id="min-gross" type="number" step="0.01" min="0" value="0">
+                </div>
+                <div>
+                    <label for="max-rows">Max Rows</label>
+                    <input id="max-rows" type="number" min="10" max="500" value="50">
+                </div>
+                <div>
+                    <label for="sort-mode">Sort</label>
+                    <select id="sort-mode">
+                        <option value="newest">Newest First</option>
+                        <option value="net_bps">Highest Net Bps</option>
+                        <option value="symbol">Symbol A-Z</option>
+                    </select>
+                </div>
+                <div>
+                    <label for="clear-filters">Actions</label>
+                    <button id="clear-filters" type="button">Clear Filters</button>
+                </div>
+            </div>
+        </section>
+
+        <section class="panel">
+            <strong id="feed-stats">Events: 0 | Showing: 0</strong>
+            <div class="table-wrapper" style="margin-top:10px;">
+                <table id="feed-table">
+                    <thead>
+                        <tr>
+                            <th>Time</th>
+                            <th>Symbol</th>
+                            <th>Buy Venue</th>
+                            <th>Ask Price</th>
+                            <th>Sell Venue</th>
+                            <th>Bid Price</th>
+                            <th>Gross Spread</th>
+                            <th>Net Bps</th>
+                        </tr>
+                    </thead>
+                    <tbody id="feed-body"></tbody>
+                </table>
+            </div>
+        </section>
+
+        <section class="panel">
+            <strong>Raw Payload Stream</strong>
+            <div class="raw-controls">
+                <button id="toggle-raw" type="button">Show Raw Stream</button>
+                <button id="clear-raw" type="button">Clear Raw</button>
+            </div>
+            <div id="raw-log" class="raw-log"></div>
+        </section>
+    </div>
+    <script src="feed.js"></script>
+</body>
+</html>

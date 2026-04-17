@@ -1,0 +1,40 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Trading Arbies</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="container">
+        <nav style="margin-bottom: 20px; text-align: right;">
+            <a href="/">Dashboard</a> | 
+            <a href="/feed.html">Live Feed</a> | 
+            <a href="/status.html">Status Check</a> | 
+            <a href="/test.html">API Test</a>
+        </nav>
+        <h1>Live Arbitrage Opportunities</h1>
+        <div class="table-wrapper">
+            <table id="arb-table">
+                <thead>
+                    <tr>
+                        <th>Time</th>
+                        <th>Symbol</th>
+                        <th>Buy Venue</th>
+                        <th>Ask Price</th>
+                        <th>Sell Venue</th>
+                        <th>Bid Price</th>
+                        <th>Gross Spread</th>
+                        <th>Net Bps</th>
+                    </tr>
+                </thead>
+                <tbody id="arb-body">
+                    <!-- Data injected via JS -->
+                </tbody>
+            </table>
+        </div>
+    </div>
+    <script src="app.js"></script>
+</body>
+</html>

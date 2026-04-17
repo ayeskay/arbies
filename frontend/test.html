@@ -1,0 +1,105 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>API Endpoints Test</title>
+    <link rel="stylesheet" href="styles.css">
+    <style>
+        .test-box { margin-bottom: 20px; padding: 15px; border: 1px solid #ccc; background: #fafafa; }
+        .response-box { background: #eee; padding: 10px; font-family: monospace; white-space: pre-wrap; margin-top: 10px; border-radius: 4px; max-height: 300px; overflow-y: auto;}
+        button { padding: 8px 12px; cursor: pointer; border: 1px solid #999; background: #fff; }
+        button:hover { background: #f0f0f0; }
+    </style>
+</head>
+<body>
+    <div class="container">
+        <nav style="margin-bottom: 20px; text-align: right;">
+            <a href="/">Dashboard</a> | 
+            <a href="/feed.html">Live Feed</a> | 
+            <a href="/status.html">Status Check</a> | 
+            <a href="/test.html">API Test</a>
+        </nav>
+        <h1>API Testing Dashboard</h1>
+
+        <div class="test-box">
+            <h3>1. GET /api/health</h3>
+            <p>Check if the API server is responsive.</p>
+            <button onclick="testHealth()">Call /api/health</button>
+            <div id="res-health" class="response-box">Awaiting execution...</div>
+        </div>
+
+        <div class="test-box">
+            <h3>2. GET /api/state</h3>
+            <p>Fetch the raw internal multi-exchange orderbook dictionary.</p>
+            <button onclick="testState()">Call /api/state</button>
+            <div id="res-state" class="response-box">Awaiting execution...</div>
+        </div>
+
+        <div class="test-box">
+            <h3>3. WS /ws</h3>
+            <p>Connect to the websocket broadcaster to listen for opportunities.</p>
+            <button onclick="testWS()">Connect WebSocket</button>
+            <button onclick="disconnectWS()">Disconnect</button>
+            <div id="res-ws" class="response-box">Not connected...</div>
+        </div>
+    </div>
+
+    <script>
+        async function testHealth() {
+            const out = document.getElementById('res-health');
+            out.innerText = "Calling...";
+            try {
+                const res = await fetch('/api/health');
+                const data = await res.json();
+                out.innerText = JSON.stringify(data, null, 2);
+            } catch (e) {
+                out.innerText = "Error: " + e.message;
+            }
+        }
+
+        async function testState() {
+            const out = document.getElementById('res-state');
+            out.innerText = "Calling...";
+            try {
+                const res = await fetch('/api/state');
+                const data = await res.json();
+                out.innerText = JSON.stringify(data, null, 2);
+            } catch (e) {
+                out.innerText = "Error: " + e.message;
+            }
+        }
+
+        let testSocket = null;
+        function testWS() {
+            const out = document.getElementById('res-ws');
+            if (testSocket) {
+                out.innerText = "Already connected.\n" + out.innerText;
+                return;
+            }
+            
+            const protocol = window.location.protocol === 'https:' ? 'wss:' : 'ws:';
+            testSocket = new WebSocket(`${protocol}//${window.location.host}/ws`);
+            
+            out.innerText = "Connecting...\n";
+            
+            testSocket.onopen = () => out.innerText = "Connected!\n" + out.innerText;
+            testSocket.onmessage = (e) => {
+                const payload = JSON.stringify(JSON.parse(e.data), null, 2);
+                out.innerText = `[Message Received]:\n${payload}\n\n` + out.innerText;
+            };
+            testSocket.onclose = () => {
+                out.innerText = "Disconnected.\n" + out.innerText;
+                testSocket = null;
+            };
+            testSocket.onerror = (e) => out.innerText = "Error.\n" + out.innerText;
+        }
+
+        function disconnectWS() {
+            if (testSocket) {
+                testSocket.close();
+            }
+        }
+    </script>
+</body>
+</html>
