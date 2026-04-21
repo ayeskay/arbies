@@ -8,13 +8,18 @@ DEFAULT_RECONNECT_DELAY = 1
 MAX_RECONNECT_DELAY = 60
 
 VENUE_FEES_BPS = {
-    "binance": 10.0,
-    "okx": 10.0,
-    "coinbase": 15.0,
+    "binance": 1.0,
+    "okx": 1.0,
+    "coinbase": 2.0,
 }
 
-SLIPPAGE_BPS = 5.0
-MIN_NET_SPREAD_BPS = 5.0
+SLIPPAGE_BPS = 0.5
+MIN_NET_SPREAD_BPS = 0.5
+
+# Deduplicate identical opportunities for a short tick window.
+OPPORTUNITY_DEDUP_TTL_TICKS = 10
+OPPORTUNITY_HASH_PRICE_DECIMALS = 2
+OPPORTUNITY_DEDUP_MAX_CACHE_SIZE = 5000
 
 VENUE_SYMBOL_MAPS = {
     "binance": {
