@@ -2,8 +2,7 @@ import asyncio
 from config.settings import (
     TRACKED_SYMBOLS,
     OPPORTUNITY_DEDUP_TTL_TICKS,
-    OPPORTUNITY_HASH_PRICE_DECIMALS,
-    OPPORTUNITY_DEDUP_MAX_CACHE_SIZE,
+    PRICE_BUCKET_SCALE,
     get_venue_symbol,
 )
 from core.queue import market_queue
@@ -12,74 +11,74 @@ from signals.spread import get_best_opportunity
 from data_ingestion.binance_ws import binance_stream
 from data_ingestion.coinbase_ws import coinbase_stream
 from data_ingestion.okx_ws import okx_stream
-from api.server import start_api_server, broadcast_data
+from api.server import start_api_server, broadcast_data, record_opportunity
 
 try:
     import uvloop
+
     asyncio.set_event_loop_policy(uvloop.EventLoopPolicy())
 except ImportError:
     pass
 
-
-def _build_opportunity_key(symbol, opportunity):
-    decimals = OPPORTUNITY_HASH_PRICE_DECIMALS
-    return (
-        symbol,
-        opportunity["buy_exchange"],
-        opportunity["sell_exchange"],
-        round(float(opportunity["sell_bid"]), decimals),
-        round(float(opportunity["buy_ask"]), decimals),
-    )
+_EXCHANGES = ("binance", "okx", "coinbase")
+_SYMBOL_TO_ID = {symbol: index for index, symbol in enumerate(TRACKED_SYMBOLS)}
+_ID_TO_SYMBOL = {index: symbol for symbol, index in _SYMBOL_TO_ID.items()}
+_EXCHANGE_TO_ID = {exchange: index for index, exchange in enumerate(_EXCHANGES)}
+_ID_TO_EXCHANGE = {index: exchange for exchange, index in _EXCHANGE_TO_ID.items()}
 
 
-def _tick_dedup_cache(dedup_cache):
-    expired = []
-    for key, entry in dedup_cache.items():
-        entry["ttl_counter"] -= 1
-        if entry["ttl_counter"] <= 0:
-            expired.append(key)
+def _build_compact_key(symbol_id, opportunity):
+    buy_exchange_id = _EXCHANGE_TO_ID[opportunity["buy_exchange"]]
+    sell_exchange_id = _EXCHANGE_TO_ID[opportunity["sell_exchange"]]
+    mid_price = (opportunity["sell_bid"] + opportunity["buy_ask"]) * 0.5
+    price_bucket = int(mid_price * PRICE_BUCKET_SCALE)
+    return (symbol_id, buy_exchange_id, sell_exchange_id, price_bucket)
 
-    for key in expired:
-        dedup_cache.pop(key, None)
-
-
-def _ensure_cache_bound(dedup_cache):
-    overflow = len(dedup_cache) - OPPORTUNITY_DEDUP_MAX_CACHE_SIZE
-    if overflow <= 0:
-        return
-    # Trim oldest entries by last_seen_tick to keep cache memory bounded.
-    oldest = sorted(dedup_cache.items(), key=lambda item: item[1]["last_seen_tick"])[:overflow]
-    for key, _ in oldest:
-        dedup_cache.pop(key, None)
 
 async def consumer_loop():
+    ttl = OPPORTUNITY_DEDUP_TTL_TICKS
     dedup_cache = {}
+    wheel = [set() for _ in range(ttl)]
     tick = 0
+
     while True:
         data = await market_queue.get()
         tick += 1
         try:
-            _tick_dedup_cache(dedup_cache)
+            expire_slot = tick % ttl
+            for expired_key in wheel[expire_slot]:
+                dedup_cache.pop(expired_key, None)
+            wheel[expire_slot].clear()
+
             update_state(data)
             symbol_state = get_state(data["symbol"])
             opportunity = get_best_opportunity(symbol_state)
             if opportunity:
-                opportunity['symbol'] = data['symbol']
-                key = _build_opportunity_key(data["symbol"], opportunity)
+                symbol_id = _SYMBOL_TO_ID[data["symbol"]]
+                key = _build_compact_key(symbol_id, opportunity)
                 existing = dedup_cache.get(key)
+                expiry_slot = (tick + ttl) % ttl
+
                 if existing:
-                    existing["last_seen_tick"] = tick
-                    existing["ttl_counter"] = OPPORTUNITY_DEDUP_TTL_TICKS
+                    old_slot = existing[1]
+                    wheel[old_slot].discard(key)
+                    existing[0] = tick
+                    existing[1] = expiry_slot
+                    wheel[expiry_slot].add(key)
                 else:
-                    dedup_cache[key] = {
-                        "last_seen_tick": tick,
-                        "ttl_counter": OPPORTUNITY_DEDUP_TTL_TICKS,
-                    }
-                    _ensure_cache_bound(dedup_cache)
+                    dedup_cache[key] = [tick, expiry_slot]
+                    wheel[expiry_slot].add(key)
+
+                    symbol_name = _ID_TO_SYMBOL[symbol_id]
+                    opportunity["symbol"] = symbol_name
+                    opportunity["buy_exchange"] = _ID_TO_EXCHANGE[key[1]]
+                    opportunity["sell_exchange"] = _ID_TO_EXCHANGE[key[2]]
+
+                    record_opportunity(opportunity)
                     await broadcast_data(opportunity)
                     print(
                         "ARB | "
-                        f"{data['symbol']} | "
+                        f"{symbol_name} | "
                         f"BUY {opportunity['buy_exchange']} @ {opportunity['buy_ask']:.2f} | "
                         f"SELL {opportunity['sell_exchange']} @ {opportunity['sell_bid']:.2f} | "
                         f"Gross: {opportunity['gross_spread']:.2f} "
@@ -91,15 +90,14 @@ async def consumer_loop():
         finally:
             market_queue.task_done()
 
+
 async def main():
     producers = []
     for symbol in TRACKED_SYMBOLS:
         producers.append(
             binance_stream(market_queue, symbol, get_venue_symbol("binance", symbol))
         )
-        producers.append(
-            okx_stream(market_queue, symbol, get_venue_symbol("okx", symbol))
-        )
+        producers.append(okx_stream(market_queue, symbol, get_venue_symbol("okx", symbol)))
         producers.append(
             coinbase_stream(market_queue, symbol, get_venue_symbol("coinbase", symbol))
         )
@@ -107,6 +105,7 @@ async def main():
     producers.append(start_api_server())
 
     await asyncio.gather(*producers, consumer_loop())
+
 
 if __name__ == "__main__":
     try:

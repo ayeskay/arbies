@@ -1,9 +1,12 @@
 import { RealtimeChannel } from "../core/ws-client.js";
 import { animateNumber } from "../core/motion.js";
 import { toFixedOrDash, formatTime, normalize, numberOrZero, clampInt } from "../core/format.js";
+import { getJson } from "../core/http-client.js";
 
 const BUFFER_LIMIT = 500;
 const RAW_LIMIT = 200;
+const WARMLOAD_LIMIT = 80;
+const STARTUP_DEDUP_MS = 3000;
 
 const filters = {
     symbol: document.getElementById("symbol-filter"),
@@ -30,6 +33,8 @@ const rawEntries = [];
 let renderScheduled = false;
 let rawOpen = false;
 let shownCountTween = 0;
+let startupDedupActive = true;
+const startupKeys = new Set();
 
 channel.onStatus(({ state }) => {
     if (state === "live") {
@@ -50,17 +55,54 @@ channel.onStatus(({ state }) => {
 channel.onMessage((rawPayload) => {
     try {
         const payload = JSON.parse(rawPayload);
-        payload._receivedAt = Date.now();
-        events.push(payload);
-        if (events.length > BUFFER_LIMIT) {
-            events.shift();
-        }
+        ingestOpportunity(payload);
         appendRaw(rawPayload);
-        scheduleRender();
     } catch (error) {
         appendRaw(`PARSE_ERROR ${String(error)}\n${rawPayload}`);
     }
 });
+
+function keyForOpportunity(payload) {
+    const symbol = String(payload.symbol || "").toUpperCase();
+    const buyExchange = String(payload.buy_exchange || "").toLowerCase();
+    const sellExchange = String(payload.sell_exchange || "").toLowerCase();
+    const buyAsk = Number(payload.buy_ask) || 0;
+    const sellBid = Number(payload.sell_bid) || 0;
+    const bucket = Math.floor(((buyAsk + sellBid) * 0.5) * 100);
+    return `${symbol}|${buyExchange}|${sellExchange}|${bucket}`;
+}
+
+function ingestOpportunity(payload) {
+    const key = keyForOpportunity(payload);
+    if (startupDedupActive && startupKeys.has(key)) {
+        return;
+    }
+    if (startupDedupActive) {
+        startupKeys.add(key);
+    }
+
+    payload._receivedAt = Date.now();
+    events.push(payload);
+    if (events.length > BUFFER_LIMIT) {
+        events.shift();
+    }
+    scheduleRender();
+}
+
+async function warmLoadOpportunities() {
+    try {
+        const seed = await getJson(`/api/opportunities?limit=${WARMLOAD_LIMIT}`);
+        if (!Array.isArray(seed) || seed.length === 0) {
+            return;
+        }
+        // API returns newest-first; ingest oldest-first so _receivedAt ordering is preserved.
+        for (let i = seed.length - 1; i >= 0; i -= 1) {
+            ingestOpportunity(seed[i]);
+        }
+    } catch {
+        // Warm load failure should not block realtime feed.
+    }
+}
 
 function appendRaw(entry) {
     rawEntries.push(entry);
@@ -205,5 +247,15 @@ function bindEvents() {
 window.addEventListener("beforeunload", () => channel.disconnect());
 bindEvents();
 setConnectionLabel("Connecting", "warn");
-channel.connect();
-scheduleRender();
+
+async function bootstrap() {
+    await warmLoadOpportunities();
+    channel.connect();
+    scheduleRender();
+    window.setTimeout(() => {
+        startupDedupActive = false;
+        startupKeys.clear();
+    }, STARTUP_DEDUP_MS);
+}
+
+bootstrap();

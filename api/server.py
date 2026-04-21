@@ -1,9 +1,16 @@
 import asyncio
 import orjson
 import os
+from collections import deque
 from aiohttp import web
+from config.settings import (
+    OPPORTUNITY_HISTORY_CAPACITY,
+    OPPORTUNITY_WARMLOAD_DEFAULT_LIMIT,
+    OPPORTUNITY_WARMLOAD_MAX_LIMIT,
+)
 
 connected_clients = set()
+opportunity_history = deque(maxlen=OPPORTUNITY_HISTORY_CAPACITY)
 
 async def health_handler(request):
     payload = {"status": "OK", "service": "Arbies Arbitrage Engine"}
@@ -12,6 +19,18 @@ async def health_handler(request):
 async def state_handler(request):
     from core.state import _state
     return web.Response(text=orjson.dumps(_state).decode('utf-8'), content_type='application/json')
+
+
+async def opportunities_handler(request):
+    try:
+        requested = int(request.query.get("limit", OPPORTUNITY_WARMLOAD_DEFAULT_LIMIT))
+    except (TypeError, ValueError):
+        requested = OPPORTUNITY_WARMLOAD_DEFAULT_LIMIT
+    limit = max(1, min(requested, OPPORTUNITY_WARMLOAD_MAX_LIMIT))
+
+    newest_first = list(reversed(opportunity_history))
+    payload = newest_first[:limit]
+    return web.Response(text=orjson.dumps(payload).decode("utf-8"), content_type="application/json")
 
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
@@ -40,6 +59,10 @@ async def broadcast_data(data: dict):
         if isinstance(result, Exception):
             connected_clients.discard(client)
 
+
+def record_opportunity(data: dict):
+    opportunity_history.append(dict(data))
+
 async def index_handler(request):
     return web.FileResponse(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'index.html'))
 
@@ -49,6 +72,7 @@ def get_app():
     # API Endpoints
     app.router.add_get('/api/health', health_handler)
     app.router.add_get('/api/state', state_handler)
+    app.router.add_get('/api/opportunities', opportunities_handler)
     
     # WebSockets
     app.router.add_get('/ws', websocket_handler)

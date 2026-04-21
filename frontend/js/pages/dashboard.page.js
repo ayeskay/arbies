@@ -1,9 +1,12 @@
 import { RealtimeChannel } from "../core/ws-client.js";
 import { animateNumber } from "../core/motion.js";
 import { toFixedOrDash, formatTime } from "../core/format.js";
+import { getJson } from "../core/http-client.js";
 
 const tbody = document.getElementById("arb-body");
 const MAX_ROWS = 80;
+const WARMLOAD_LIMIT = 80;
+const STARTUP_DEDUP_MS = 3000;
 
 const elConnectionStatus = document.getElementById("connection-status");
 const elConnectionSubtext = document.getElementById("connection-subtext");
@@ -29,6 +32,8 @@ const metricTween = {
 };
 
 let flushScheduled = false;
+let startupDedupActive = true;
+const startupKeys = new Set();
 
 channel.onStatus(({ state: status, detail }) => {
     let kind = "metric-warn";
@@ -44,12 +49,48 @@ channel.onStatus(({ state: status, detail }) => {
 channel.onMessage((rawPayload) => {
     try {
         const data = JSON.parse(rawPayload);
-        pendingRows.push(data);
-        scheduleFlush();
+        enqueueOpportunity(data);
     } catch {
         setConnectionState("Warning", "Received malformed payload", "metric-warn");
     }
 });
+
+function keyForOpportunity(data) {
+    const symbol = String(data.symbol || "").toUpperCase();
+    const buyExchange = String(data.buy_exchange || "").toLowerCase();
+    const sellExchange = String(data.sell_exchange || "").toLowerCase();
+    const buyAsk = Number(data.buy_ask) || 0;
+    const sellBid = Number(data.sell_bid) || 0;
+    const bucket = Math.floor(((buyAsk + sellBid) * 0.5) * 100);
+    return `${symbol}|${buyExchange}|${sellExchange}|${bucket}`;
+}
+
+function enqueueOpportunity(data) {
+    const key = keyForOpportunity(data);
+    if (startupDedupActive && startupKeys.has(key)) {
+        return;
+    }
+    if (startupDedupActive) {
+        startupKeys.add(key);
+    }
+    pendingRows.push(data);
+    scheduleFlush();
+}
+
+async function warmLoadOpportunities() {
+    try {
+        const seed = await getJson(`/api/opportunities?limit=${WARMLOAD_LIMIT}`);
+        if (!Array.isArray(seed) || seed.length === 0) {
+            return;
+        }
+        // API returns newest-first; enqueue oldest-first so table order stays correct.
+        for (let i = seed.length - 1; i >= 0; i -= 1) {
+            enqueueOpportunity(seed[i]);
+        }
+    } catch {
+        // Warm load is optional; live websocket stream is still source of truth.
+    }
+}
 
 function capitalize(value) {
     if (!value) {
@@ -174,4 +215,14 @@ function appendCell(tr, value, className) {
 }
 
 window.addEventListener("beforeunload", () => channel.disconnect());
-channel.connect();
+
+async function bootstrap() {
+    await warmLoadOpportunities();
+    channel.connect();
+    window.setTimeout(() => {
+        startupDedupActive = false;
+        startupKeys.clear();
+    }, STARTUP_DEDUP_MS);
+}
+
+bootstrap();
