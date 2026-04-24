@@ -42,6 +42,8 @@ async def coinbase_stream(queue, symbol, venue_symbol):
                         "timestamp": time.time(),
                     }
                     await queue.put(normalized)
+        except asyncio.CancelledError:
+            raise
         except Exception as exc:
             print(f"WS | coinbase | {symbol} | {type(exc).__name__}: {exc}")
             await asyncio.sleep(delay)

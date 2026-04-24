@@ -50,6 +50,32 @@
 
         <section class="panel reveal-stagger">
             <div class="panel-header">
+                <h3>Symbol Control</h3>
+                <p id="selected-symbol-label">Selected: BTCUSDT</p>
+            </div>
+            <div class="symbol-control-grid">
+                <div class="field">
+                    <label for="symbol-input">Search Pair</label>
+                    <input id="symbol-input" list="symbol-suggestions" type="text" placeholder="Type BTCUSDT or ETHUSDT">
+                    <datalist id="symbol-suggestions"></datalist>
+                </div>
+                <div class="field symbol-action">
+                    <label for="apply-symbol">Run</label>
+                    <button id="apply-symbol" class="btn-primary" type="button">Track Symbol</button>
+                </div>
+            </div>
+            <div class="quick-row">
+                <span class="quick-label">Quick Picks</span>
+                <div id="quick-buttons" class="quick-buttons"></div>
+            </div>
+            <div class="quick-row">
+                <span class="quick-label">Recent</span>
+                <div id="recent-searches" class="quick-buttons"></div>
+            </div>
+        </section>
+
+        <section class="panel reveal-stagger">
+            <div class="panel-header">
                 <h3>Live Opportunities</h3>
                 <p>Newest opportunities appear on top. Keeping the latest 80 rows.</p>
             </div>
@@ -57,13 +83,14 @@
                 <table>
                     <thead>
                         <tr>
-                            <th>Time</th>
+                            <th>Timestamp</th>
                             <th>Symbol</th>
                             <th>Buy Venue</th>
                             <th>Ask</th>
                             <th>Sell Venue</th>
                             <th>Bid</th>
                             <th>Gross Spread</th>
+                            <th>Net Spread</th>
                             <th>Net Bps</th>
                         </tr>
                     </thead>

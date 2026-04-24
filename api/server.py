@@ -3,14 +3,30 @@ import orjson
 import os
 from collections import deque
 from aiohttp import web
+from core.metrics import get_metrics_snapshot, record_api_request
 from config.settings import (
+    DEFAULT_SYMBOL,
     OPPORTUNITY_HISTORY_CAPACITY,
+    TOP_TRADED_SYMBOLS,
     OPPORTUNITY_WARMLOAD_DEFAULT_LIMIT,
     OPPORTUNITY_WARMLOAD_MAX_LIMIT,
+    normalize_symbol,
 )
 
 connected_clients = set()
 opportunity_history = deque(maxlen=OPPORTUNITY_HISTORY_CAPACITY)
+_runtime_get_symbol = None
+_runtime_set_symbol = None
+_supported_symbols = []
+_exchanges = []
+
+
+def register_runtime(get_symbol, set_symbol, supported_symbols, exchanges):
+    global _runtime_get_symbol, _runtime_set_symbol, _supported_symbols, _exchanges
+    _runtime_get_symbol = get_symbol
+    _runtime_set_symbol = set_symbol
+    _supported_symbols = list(supported_symbols)
+    _exchanges = list(exchanges)
 
 async def health_handler(request):
     payload = {"status": "OK", "service": "Arbies Arbitrage Engine"}
@@ -32,6 +48,50 @@ async def opportunities_handler(request):
     payload = newest_first[:limit]
     return web.Response(text=orjson.dumps(payload).decode("utf-8"), content_type="application/json")
 
+
+async def metrics_handler(request):
+    payload = get_metrics_snapshot()
+    return web.Response(text=orjson.dumps(payload).decode("utf-8"), content_type="application/json")
+
+
+async def symbols_handler(request):
+    payload = {
+        "default_symbol": DEFAULT_SYMBOL.upper(),
+        "top_symbols": list(TOP_TRADED_SYMBOLS),
+        "supported_symbols": [symbol.upper() for symbol in _supported_symbols],
+        "exchanges": list(_exchanges),
+    }
+    return web.Response(text=orjson.dumps(payload).decode("utf-8"), content_type="application/json")
+
+
+async def selected_symbol_handler(request):
+    if request.method == "GET":
+        active = DEFAULT_SYMBOL
+        if _runtime_get_symbol:
+            active = _runtime_get_symbol()
+        payload = {
+            "selected_symbol": str(active).upper(),
+            "exchanges": list(_exchanges),
+        }
+        return web.Response(text=orjson.dumps(payload).decode("utf-8"), content_type="application/json")
+
+    if _runtime_set_symbol is None:
+        return web.Response(status=503, text=orjson.dumps({"error": "Runtime not ready"}).decode("utf-8"), content_type="application/json")
+
+    body = await request.json()
+    requested = normalize_symbol(body.get("symbol"))
+    try:
+        active = await _runtime_set_symbol(requested)
+    except ValueError as exc:
+        payload = {"error": str(exc)}
+        return web.Response(status=400, text=orjson.dumps(payload).decode("utf-8"), content_type="application/json")
+
+    payload = {
+        "selected_symbol": str(active).upper(),
+        "message": "Symbol stream updated",
+    }
+    return web.Response(text=orjson.dumps(payload).decode("utf-8"), content_type="application/json")
+
 async def websocket_handler(request):
     ws = web.WebSocketResponse()
     await ws.prepare(request)
@@ -43,6 +103,13 @@ async def websocket_handler(request):
     finally:
         connected_clients.remove(ws)
     return ws
+
+
+@web.middleware
+async def api_metrics_middleware(request, handler):
+    if request.path.startswith("/api/"):
+        record_api_request(request.path)
+    return await handler(request)
 
 async def broadcast_data(data: dict):
     if not connected_clients:
@@ -67,12 +134,16 @@ async def index_handler(request):
     return web.FileResponse(os.path.join(os.path.dirname(os.path.dirname(__file__)), 'frontend', 'index.html'))
 
 def get_app():
-    app = web.Application()
+    app = web.Application(middlewares=[api_metrics_middleware])
 
     # API Endpoints
     app.router.add_get('/api/health', health_handler)
     app.router.add_get('/api/state', state_handler)
     app.router.add_get('/api/opportunities', opportunities_handler)
+    app.router.add_get('/api/metrics', metrics_handler)
+    app.router.add_get('/api/symbols', symbols_handler)
+    app.router.add_get('/api/symbol', selected_symbol_handler)
+    app.router.add_post('/api/symbol', selected_symbol_handler)
     
     # WebSockets
     app.router.add_get('/ws', websocket_handler)

@@ -49,4 +49,5 @@ def get_best_opportunity(exchanges):
         "gross_spread_bps": gross_spread_bps,
         "net_spread_bps": net_spread_bps,
         "spread_pct": spread_pct,
+        "timestamp": max(best_bid.get("timestamp", 0.0), best_ask.get("timestamp", 0.0)),
     }

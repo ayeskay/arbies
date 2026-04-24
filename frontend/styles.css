@@ -336,6 +336,53 @@ tbody tr.row-flash {
     gap: 10px;
 }
 
+.symbol-control-grid {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) 180px;
+    gap: 10px;
+    align-items: end;
+}
+
+.symbol-action {
+    display: flex;
+    flex-direction: column;
+}
+
+.quick-row {
+    margin-top: 12px;
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    flex-wrap: wrap;
+}
+
+.quick-label {
+    font-size: 0.78rem;
+    color: #4f609f;
+    text-transform: uppercase;
+    letter-spacing: 0.05em;
+    font-weight: 700;
+}
+
+.quick-buttons {
+    display: flex;
+    gap: 8px;
+    flex-wrap: wrap;
+}
+
+.quick-btn {
+    width: auto;
+    border-radius: 999px;
+    padding: 8px 12px;
+    border: 1px solid #c7d4ff;
+    font-size: 0.82rem;
+    background: #f7f9ff;
+}
+
+.quick-btn-muted {
+    background: #ffffff;
+}
+
 .field label {
     display: block;
     font-size: 0.76rem;
@@ -486,6 +533,10 @@ button:active {
 
     .filter-grid {
         grid-template-columns: repeat(2, minmax(0, 1fr));
+    }
+
+    .symbol-control-grid {
+        grid-template-columns: 1fr;
     }
 
     .split-grid {
