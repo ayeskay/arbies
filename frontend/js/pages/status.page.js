@@ -6,6 +6,9 @@ const healthDetail = document.getElementById("health-detail");
 const healthJson = document.getElementById("health-json");
 const trackedSymbols = document.getElementById("tracked-symbols");
 const venueEntries = document.getElementById("venue-entries");
+const marketRequestsPm = document.getElementById("market-requests-pm");
+const apiRequestsPm = document.getElementById("api-requests-pm");
+const marketByExchange = document.getElementById("market-by-exchange");
 const stateSample = document.getElementById("state-sample");
 
 function setHealth(label, detail, state) {
@@ -54,7 +57,23 @@ async function checkState() {
     }
 }
 
+
+async function checkMetrics() {
+    try {
+        const data = await getJson("/api/metrics");
+        marketRequestsPm.textContent = String(data.market_requests_per_min || 0);
+        apiRequestsPm.textContent = String(data.api_requests_per_min || 0);
+        marketByExchange.textContent = JSON.stringify(data.market_by_exchange || {}, null, 2);
+    } catch (error) {
+        marketRequestsPm.textContent = "0";
+        apiRequestsPm.textContent = "0";
+        marketByExchange.textContent = `Error: ${error.message}`;
+    }
+}
+
 checkStatus();
 checkState();
+checkMetrics();
 window.setInterval(checkStatus, 5000);
 window.setInterval(checkState, 5000);
+window.setInterval(checkMetrics, 5000);

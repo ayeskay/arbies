@@ -1,17 +1,19 @@
 import asyncio
 from config.settings import (
-    TRACKED_SYMBOLS,
+    DEFAULT_SYMBOL,
+    EXCHANGES,
     OPPORTUNITY_DEDUP_TTL_TICKS,
     PRICE_BUCKET_SCALE,
     get_venue_symbol,
+    normalize_symbol,
+    get_supported_symbols,
 )
 from core.queue import market_queue
+from core.metrics import record_market_event
 from core.state import update_state, get_state
 from signals.spread import get_best_opportunity
-from data_ingestion.binance_ws import binance_stream
-from data_ingestion.coinbase_ws import coinbase_stream
-from data_ingestion.okx_ws import okx_stream
-from api.server import start_api_server, broadcast_data, record_opportunity
+from data_ingestion.stream_factory import STREAM_BUILDERS
+from api.server import start_api_server, broadcast_data, record_opportunity, register_runtime
 
 try:
     import uvloop
@@ -20,19 +22,76 @@ try:
 except ImportError:
     pass
 
-_EXCHANGES = ("binance", "okx", "coinbase")
-_SYMBOL_TO_ID = {symbol: index for index, symbol in enumerate(TRACKED_SYMBOLS)}
-_ID_TO_SYMBOL = {index: symbol for symbol, index in _SYMBOL_TO_ID.items()}
-_EXCHANGE_TO_ID = {exchange: index for index, exchange in enumerate(_EXCHANGES)}
-_ID_TO_EXCHANGE = {index: exchange for exchange, index in _EXCHANGE_TO_ID.items()}
-
-
-def _build_compact_key(symbol_id, opportunity):
-    buy_exchange_id = _EXCHANGE_TO_ID[opportunity["buy_exchange"]]
-    sell_exchange_id = _EXCHANGE_TO_ID[opportunity["sell_exchange"]]
+def _build_compact_key(symbol, opportunity):
     mid_price = (opportunity["sell_bid"] + opportunity["buy_ask"]) * 0.5
     price_bucket = int(mid_price * PRICE_BUCKET_SCALE)
-    return (symbol_id, buy_exchange_id, sell_exchange_id, price_bucket)
+    return (
+        symbol,
+        opportunity["buy_exchange"],
+        opportunity["sell_exchange"],
+        price_bucket,
+    )
+
+
+class StreamOrchestrator:
+    def __init__(self, queue):
+        self.queue = queue
+        self._active_symbol = normalize_symbol(DEFAULT_SYMBOL)
+        self._tasks = {}
+        self._lock = asyncio.Lock()
+
+    def get_active_symbol(self):
+        return self._active_symbol
+
+    async def start(self):
+        await self.set_symbol(self._active_symbol)
+
+    async def set_symbol(self, symbol):
+        next_symbol = normalize_symbol(symbol)
+
+        async with self._lock:
+            if next_symbol == self._active_symbol and self._tasks:
+                return self._active_symbol
+
+            if next_symbol not in get_supported_symbols():
+                raise ValueError(f"Unsupported symbol: {symbol}")
+
+            await self._stop_all_streams()
+            self._start_symbol_streams(next_symbol)
+            self._active_symbol = next_symbol
+            print(f"STREAM | active symbol -> {self._active_symbol.upper()}")
+            return self._active_symbol
+
+    async def shutdown(self):
+        async with self._lock:
+            await self._stop_all_streams()
+
+    def _start_symbol_streams(self, symbol):
+        self._tasks = {}
+        for exchange in EXCHANGES:
+            stream_builder = STREAM_BUILDERS.get(exchange)
+            if not stream_builder:
+                continue
+            try:
+                venue_symbol = get_venue_symbol(exchange, symbol)
+            except KeyError:
+                continue
+
+            task = asyncio.create_task(
+                stream_builder(self.queue, symbol, venue_symbol),
+                name=f"stream:{exchange}:{symbol}",
+            )
+            self._tasks[exchange] = task
+
+    async def _stop_all_streams(self):
+        if not self._tasks:
+            return
+
+        tasks = list(self._tasks.values())
+        self._tasks.clear()
+        for task in tasks:
+            task.cancel()
+        await asyncio.gather(*tasks, return_exceptions=True)
 
 
 async def consumer_loop():
@@ -45,6 +104,7 @@ async def consumer_loop():
         data = await market_queue.get()
         tick += 1
         try:
+            record_market_event(data.get("exchange"))
             expire_slot = tick % ttl
             for expired_key in wheel[expire_slot]:
                 dedup_cache.pop(expired_key, None)
@@ -54,8 +114,8 @@ async def consumer_loop():
             symbol_state = get_state(data["symbol"])
             opportunity = get_best_opportunity(symbol_state)
             if opportunity:
-                symbol_id = _SYMBOL_TO_ID[data["symbol"]]
-                key = _build_compact_key(symbol_id, opportunity)
+                symbol_key = data["symbol"]
+                key = _build_compact_key(symbol_key, opportunity)
                 existing = dedup_cache.get(key)
                 expiry_slot = (tick + ttl) % ttl
 
@@ -69,10 +129,8 @@ async def consumer_loop():
                     dedup_cache[key] = [tick, expiry_slot]
                     wheel[expiry_slot].add(key)
 
-                    symbol_name = _ID_TO_SYMBOL[symbol_id]
+                    symbol_name = symbol_key
                     opportunity["symbol"] = symbol_name
-                    opportunity["buy_exchange"] = _ID_TO_EXCHANGE[key[1]]
-                    opportunity["sell_exchange"] = _ID_TO_EXCHANGE[key[2]]
 
                     record_opportunity(opportunity)
                     await broadcast_data(opportunity)
@@ -92,19 +150,20 @@ async def consumer_loop():
 
 
 async def main():
-    producers = []
-    for symbol in TRACKED_SYMBOLS:
-        producers.append(
-            binance_stream(market_queue, symbol, get_venue_symbol("binance", symbol))
-        )
-        producers.append(okx_stream(market_queue, symbol, get_venue_symbol("okx", symbol)))
-        producers.append(
-            coinbase_stream(market_queue, symbol, get_venue_symbol("coinbase", symbol))
-        )
+    orchestrator = StreamOrchestrator(market_queue)
+    await orchestrator.start()
 
-    producers.append(start_api_server())
+    register_runtime(
+        get_symbol=orchestrator.get_active_symbol,
+        set_symbol=orchestrator.set_symbol,
+        supported_symbols=get_supported_symbols(),
+        exchanges=EXCHANGES,
+    )
 
-    await asyncio.gather(*producers, consumer_loop())
+    try:
+        await asyncio.gather(start_api_server(), consumer_loop())
+    finally:
+        await orchestrator.shutdown()
 
 
 if __name__ == "__main__":
